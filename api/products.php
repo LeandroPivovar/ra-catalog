@@ -86,13 +86,18 @@ function processFileUpload($fileKey, $type) {
 
 // Função para obter dados do body da requisição
 function getRequestBody() {
-    // Se for multipart/form-data, usar $_POST
+    // Se for multipart/form-data (FormData), usar $_POST
     if (!empty($_POST)) {
         return $_POST;
     }
     
     // Caso contrário, tentar JSON
-    $data = json_decode(file_get_contents('php://input'), true);
+    $input = file_get_contents('php://input');
+    if (empty($input)) {
+        return [];
+    }
+    
+    $data = json_decode($input, true);
     return $data ?: [];
 }
 
@@ -178,11 +183,17 @@ try {
             // Atualizar produto
             $data = getRequestBody();
             
-            if (!isset($data['id'])) {
-                sendResponse(false, null, 'ID do produto é obrigatório', 400);
+            // Verificar ID no POST (FormData) ou no body (JSON)
+            $id = null;
+            if (isset($data['id'])) {
+                $id = intval($data['id']);
+            } elseif (isset($_POST['id'])) {
+                $id = intval($_POST['id']);
             }
             
-            $id = intval($data['id']);
+            if (!$id) {
+                sendResponse(false, null, 'ID do produto é obrigatório', 400);
+            }
             
             // Buscar produto atual para manter arquivos existentes se não houver novos uploads
             $stmt = $conn->prepare("SELECT imagem_url, modelo_3d_url FROM produtos WHERE id = ?");
