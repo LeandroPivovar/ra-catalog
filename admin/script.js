@@ -222,10 +222,10 @@ async function saveProduct(event) {
     try {
         let response;
         if (currentProductId) {
-            // Atualizar
+            // Atualizar (usar sempre POST para melhor compatibilidade com PHP)
             formData.append('id', currentProductId);
             response = await fetch(API_URL, {
-                method: 'PUT',
+                method: 'POST',
                 body: formData
             });
         } else {

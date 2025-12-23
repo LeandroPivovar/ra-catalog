@@ -242,147 +242,128 @@ try {
             break;
             
         case 'POST':
-            // Criar novo produto
+            // Criar ou atualizar produto (se tiver ID, atualiza)
             $data = getRequestBody();
             
-            if (!isset($data['nome']) || !isset($data['categoria'])) {
-                sendResponse(false, null, 'Campos obrigatórios: nome e categoria', 400);
-            }
-            
-            $nome = $data['nome'];
-            $categoria = $data['categoria'];
-            $descricao = isset($data['descricao']) ? $data['descricao'] : '';
-            
-            // Processar uploads de arquivos
-            $imagem_path = processFileUpload('thumbnail', 'thumbnail');
-            if (!$imagem_path && isset($data['imagem_url'])) {
-                $imagem_path = $data['imagem_url']; // Fallback para URL
-            }
-            
-            $modelo_3d_path = processFileUpload('model3d', 'model3d');
-            if (!$modelo_3d_path && isset($data['modelo_3d_url'])) {
-                $modelo_3d_path = $data['modelo_3d_url']; // Fallback para URL
-            }
-            
-            $stmt = $conn->prepare("INSERT INTO produtos (nome, categoria, descricao, imagem_url, modelo_3d_url) VALUES (?, ?, ?, ?, ?)");
-            $stmt->bind_param("sssss", $nome, $categoria, $descricao, $imagem_path, $modelo_3d_path);
-            
-            if ($stmt->execute()) {
-                $id = $conn->insert_id;
-                sendResponse(true, ['id' => $id], 'Produto criado com sucesso', 201);
-            } else {
-                sendResponse(false, null, 'Erro ao criar produto: ' . $conn->error, 500);
-            }
-            
-            $stmt->close();
-            break;
-            
-        case 'PUT':
-            // Atualizar produto
-            // Para PUT com FormData, processar manualmente para popular $_FILES
-            $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
-            $data = [];
-            
-            // Se for multipart/form-data, processar manualmente para popular $_FILES
-            if (strpos($contentType, 'multipart/form-data') !== false) {
-                $data = parseMultipartFormData(); // Isso também popula $_FILES
-            } else {
-                $data = getRequestBody();
-            }
-            
-            // Verificar ID
-            $id = null;
-            if (isset($data['id'])) {
+            // Se tiver ID, é atualização
+            if (isset($data['id']) && $data['id'] !== '') {
                 $id = intval($data['id']);
-            }
-            
-            if (!$id) {
-                sendResponse(false, null, 'ID do produto é obrigatório', 400);
-            }
-            
-            // Buscar produto atual para manter arquivos existentes se não houver novos uploads
-            $stmt = $conn->prepare("SELECT imagem_url, modelo_3d_url FROM produtos WHERE id = ?");
-            $stmt->bind_param("i", $id);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            $currentProduct = $result->fetch_assoc();
-            $stmt->close();
-            
-            $nome = isset($data['nome']) ? $data['nome'] : null;
-            $categoria = isset($data['categoria']) ? $data['categoria'] : null;
-            $descricao = isset($data['descricao']) ? $data['descricao'] : null;
-            
-            // Processar uploads de arquivos (se houver)
-            // Agora $_FILES deve estar populado pela parseMultipartFormData
-            $imagem_path = null;
-            if (isset($_FILES['thumbnail']) && $_FILES['thumbnail']['error'] === UPLOAD_ERR_OK) {
-                $imagem_path = processFileUpload('thumbnail', 'thumbnail');
-            }
-            
-            if (!$imagem_path) {
-                // Se não houve novo upload, manter o existente ou usar do form
-                $imagem_path = isset($data['imagem_url']) ? $data['imagem_url'] : ($currentProduct ? $currentProduct['imagem_url'] : null);
-            }
-            
-            $modelo_3d_path = null;
-            if (isset($_FILES['model3d']) && $_FILES['model3d']['error'] === UPLOAD_ERR_OK) {
-                $modelo_3d_path = processFileUpload('model3d', 'model3d');
-            }
-            
-            if (!$modelo_3d_path) {
-                // Se não houve novo upload, manter o existente ou usar do form
-                $modelo_3d_path = isset($data['modelo_3d_url']) ? $data['modelo_3d_url'] : ($currentProduct ? $currentProduct['modelo_3d_url'] : null);
-            }
-            
-            // Construir query dinamicamente baseado nos campos fornecidos
-            $fields = [];
-            $params = [];
-            $types = '';
-            
-            if ($nome !== null) {
-                $fields[] = "nome = ?";
-                $params[] = $nome;
-                $types .= "s";
-            }
-            if ($categoria !== null) {
-                $fields[] = "categoria = ?";
-                $params[] = $categoria;
-                $types .= "s";
-            }
-            if ($descricao !== null) {
-                $fields[] = "descricao = ?";
-                $params[] = $descricao;
-                $types .= "s";
-            }
-            if ($imagem_path !== null) {
-                $fields[] = "imagem_url = ?";
-                $params[] = $imagem_path;
-                $types .= "s";
-            }
-            if ($modelo_3d_path !== null) {
-                $fields[] = "modelo_3d_url = ?";
-                $params[] = $modelo_3d_path;
-                $types .= "s";
-            }
-            
-            if (empty($fields)) {
-                sendResponse(false, null, 'Nenhum campo para atualizar', 400);
-            }
-            
-            $types .= "i";
-            $params[] = $id;
-            
-            $sql = "UPDATE produtos SET " . implode(", ", $fields) . " WHERE id = ?";
-            $stmt = $conn->prepare($sql);
-            $stmt->bind_param($types, ...$params);
-            
-            if ($stmt->execute()) {
-                sendResponse(true, null, 'Produto atualizado com sucesso');
+                
+                // Buscar produto atual para manter arquivos existentes se não houver novos uploads
+                $stmt = $conn->prepare("SELECT imagem_url, modelo_3d_url FROM produtos WHERE id = ?");
+                $stmt->bind_param("i", $id);
+                $stmt->execute();
+                $result = $stmt->get_result();
+                $currentProduct = $result->fetch_assoc();
+                $stmt->close();
+                
+                if (!$currentProduct) {
+                    sendResponse(false, null, 'Produto não encontrado para atualização', 404);
+                }
+                
+                $nome = isset($data['nome']) ? $data['nome'] : null;
+                $categoria = isset($data['categoria']) ? $data['categoria'] : null;
+                $descricao = isset($data['descricao']) ? $data['descricao'] : null;
+                
+                // Processar uploads de arquivos (se houver)
+                $imagem_path = null;
+                if (isset($_FILES['thumbnail']) && $_FILES['thumbnail']['error'] === UPLOAD_ERR_OK) {
+                    $imagem_path = processFileUpload('thumbnail', 'thumbnail');
+                }
+                if (!$imagem_path) {
+                    $imagem_path = isset($data['imagem_url']) ? $data['imagem_url'] : $currentProduct['imagem_url'];
+                }
+                
+                $modelo_3d_path = null;
+                if (isset($_FILES['model3d']) && $_FILES['model3d']['error'] === UPLOAD_ERR_OK) {
+                    $modelo_3d_path = processFileUpload('model3d', 'model3d');
+                }
+                if (!$modelo_3d_path) {
+                    $modelo_3d_path = isset($data['modelo_3d_url']) ? $data['modelo_3d_url'] : $currentProduct['modelo_3d_url'];
+                }
+                
+                // Construir query dinamicamente baseado nos campos fornecidos
+                $fields = [];
+                $params = [];
+                $types = '';
+                
+                if ($nome !== null) {
+                    $fields[] = "nome = ?";
+                    $params[] = $nome;
+                    $types .= "s";
+                }
+                if ($categoria !== null) {
+                    $fields[] = "categoria = ?";
+                    $params[] = $categoria;
+                    $types .= "s";
+                }
+                if ($descricao !== null) {
+                    $fields[] = "descricao = ?";
+                    $params[] = $descricao;
+                    $types .= "s";
+                }
+                if ($imagem_path !== null) {
+                    $fields[] = "imagem_url = ?";
+                    $params[] = $imagem_path;
+                    $types .= "s";
+                }
+                if ($modelo_3d_path !== null) {
+                    $fields[] = "modelo_3d_url = ?";
+                    $params[] = $modelo_3d_path;
+                    $types .= "s";
+                }
+                
+                if (empty($fields)) {
+                    sendResponse(false, null, 'Nenhum campo para atualizar', 400);
+                }
+                
+                $types .= "i";
+                $params[] = $id;
+                
+                $sql = "UPDATE produtos SET " . implode(", ", $fields) . " WHERE id = ?";
+                $stmt = $conn->prepare($sql);
+                $stmt->bind_param($types, ...$params);
+                
+                if ($stmt->execute()) {
+                    sendResponse(true, null, 'Produto atualizado com sucesso');
+                } else {
+                    sendResponse(false, null, 'Erro ao atualizar produto: ' . $conn->error, 500);
+                }
+                
+                $stmt->close();
             } else {
-                sendResponse(false, null, 'Erro ao atualizar produto: ' . $conn->error, 500);
+                // Criar novo produto
+                if (!isset($data['nome']) || !isset($data['categoria'])) {
+                    sendResponse(false, null, 'Campos obrigatórios: nome e categoria', 400);
+                }
+                
+                $nome = $data['nome'];
+                $categoria = $data['categoria'];
+                $descricao = isset($data['descricao']) ? $data['descricao'] : '';
+                
+                // Processar uploads de arquivos
+                $imagem_path = processFileUpload('thumbnail', 'thumbnail');
+                if (!$imagem_path && isset($data['imagem_url'])) {
+                    $imagem_path = $data['imagem_url']; // Fallback para URL
+                }
+                
+                $modelo_3d_path = processFileUpload('model3d', 'model3d');
+                if (!$modelo_3d_path && isset($data['modelo_3d_url'])) {
+                    $modelo_3d_path = $data['modelo_3d_url']; // Fallback para URL
+                }
+                
+                $stmt = $conn->prepare("INSERT INTO produtos (nome, categoria, descricao, imagem_url, modelo_3d_url) VALUES (?, ?, ?, ?, ?)");
+                $stmt->bind_param("sssss", $nome, $categoria, $descricao, $imagem_path, $modelo_3d_path);
+                
+                if ($stmt->execute()) {
+                    $id = $conn->insert_id;
+                    sendResponse(true, ['id' => $id], 'Produto criado com sucesso', 201);
+                } else {
+                    sendResponse(false, null, 'Erro ao criar produto: ' . $conn->error, 500);
+                }
+                
+                $stmt->close();
             }
-            
-            $stmt->close();
             break;
             
         case 'DELETE':
