@@ -190,11 +190,11 @@ function renderProducts(carouselId, products) {
     carousel.innerHTML = products.map(product => {
         // Determinar caminho da imagem (suporta URLs e arquivos locais)
         let imageUrl = `https://via.placeholder.com/180x180/2196F3/FFFFFF?text=${encodeURIComponent(product.nome)}`;
-        if (product.imagem_url) {
+        if (product.imagem_url && product.imagem_url.trim() !== '') {
             if (product.imagem_url.startsWith('http')) {
                 imageUrl = product.imagem_url;
             } else {
-                // Arquivo local - usar caminho relativo
+                // Arquivo local - o caminho já vem completo do banco (ex: uploads/thumbnails/arquivo.jpg)
                 imageUrl = product.imagem_url;
             }
         }

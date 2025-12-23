@@ -263,10 +263,12 @@
             
             // Atualizar imagem 3D
             const productImage = document.getElementById('productImage');
-            if (productData.imagem_url) {
-                const imagePath = productData.imagem_url.startsWith('http') 
-                    ? productData.imagem_url 
-                    : productData.imagem_url;
+            if (productData.imagem_url && productData.imagem_url.trim() !== '') {
+                let imagePath = productData.imagem_url;
+                if (!imagePath.startsWith('http')) {
+                    // Arquivo local - o caminho já vem completo do banco (ex: uploads/thumbnails/arquivo.jpg)
+                    imagePath = imagePath;
+                }
                 productImage.src = imagePath;
             }
             
@@ -296,10 +298,13 @@
             
             // Determinar caminho do modelo 3D
             let modelPath = 'https://modelviewer.dev/shared-assets/models/Astronaut.glb'; // Fallback
-            if (productData && productData.modelo_3d_url) {
-                modelPath = productData.modelo_3d_url.startsWith('http') 
-                    ? productData.modelo_3d_url 
-                    : productData.modelo_3d_url;
+            if (productData && productData.modelo_3d_url && productData.modelo_3d_url.trim() !== '') {
+                if (productData.modelo_3d_url.startsWith('http')) {
+                    modelPath = productData.modelo_3d_url;
+                } else {
+                    // Arquivo local - o caminho já vem completo do banco (ex: uploads/models3d/arquivo.glb)
+                    modelPath = productData.modelo_3d_url;
+                }
             }
             
             // Criar model-viewer para AR

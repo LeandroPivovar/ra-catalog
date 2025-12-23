@@ -60,10 +60,14 @@ async function loadProducts() {
                 productsList.innerHTML = result.data.map(product => {
                     // Determinar caminho da imagem
                     let imagePath = 'https://via.placeholder.com/300x200/2196F3/FFFFFF?text=Sem+Imagem';
-                    if (product.imagem_url) {
-                        imagePath = product.imagem_url.startsWith('http') 
-                            ? product.imagem_url 
-                            : '../' + product.imagem_url;
+                    if (product.imagem_url && product.imagem_url.trim() !== '') {
+                        if (product.imagem_url.startsWith('http')) {
+                            imagePath = product.imagem_url;
+                        } else {
+                            // Arquivo local - o caminho já vem completo do banco (ex: uploads/thumbnails/arquivo.jpg)
+                            // Admin está em /admin/, então precisa voltar um nível
+                            imagePath = '../' + product.imagem_url;
+                        }
                     }
                     
                     return `
@@ -155,8 +159,12 @@ async function editProduct(id) {
             document.getElementById('currentModel3d').innerHTML = '';
             
             // Mostrar imagem atual se existir
-            if (product.imagem_url) {
-                const imgPath = product.imagem_url.startsWith('http') ? product.imagem_url : '../' + product.imagem_url;
+            if (product.imagem_url && product.imagem_url.trim() !== '') {
+                let imgPath = product.imagem_url;
+                if (!imgPath.startsWith('http')) {
+                    // Arquivo local - o caminho já vem completo do banco
+                    imgPath = '../' + imgPath;
+                }
                 document.getElementById('currentThumbnail').innerHTML = `
                     <small style="color: #666;">Imagem atual:</small><br>
                     <img src="${imgPath}" style="max-width: 200px; max-height: 150px; margin-top: 5px; border-radius: 8px;" 
@@ -165,10 +173,15 @@ async function editProduct(id) {
             }
             
             // Mostrar modelo 3D atual se existir
-            if (product.modelo_3d_url) {
-                const modelPath = product.modelo_3d_url.startsWith('http') ? product.modelo_3d_url : '../' + product.modelo_3d_url;
+            if (product.modelo_3d_url && product.modelo_3d_url.trim() !== '') {
+                let modelPath = product.modelo_3d_url;
+                if (!modelPath.startsWith('http')) {
+                    // Arquivo local - o caminho já vem completo do banco
+                    modelPath = '../' + modelPath;
+                }
+                const fileName = modelPath.split('/').pop();
                 document.getElementById('currentModel3d').innerHTML = `
-                    <small style="color: #666;">Modelo 3D atual: ${product.modelo_3d_url.split('/').pop()}</small>
+                    <small style="color: #666;">Modelo 3D atual: ${fileName}</small>
                 `;
             }
             
