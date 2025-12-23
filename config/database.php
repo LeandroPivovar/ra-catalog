@@ -17,11 +17,15 @@ function getConnection() {
     $conn = new mysqli(DB_HOST, DB_USER, DB_PASS);
     
     if ($conn->connect_error) {
-        die("Erro de conexão: " . $conn->connect_error);
+        error_log("Erro de conexão MySQL: " . $conn->connect_error);
+        return false;
     }
     
     // Selecionar o banco de dados
-    $conn->select_db(DB_NAME);
+    if (!$conn->select_db(DB_NAME)) {
+        error_log("Erro ao selecionar banco de dados: " . DB_NAME . " - " . $conn->error);
+        return false;
+    }
     
     // Definir charset para UTF-8
     $conn->set_charset("utf8mb4");

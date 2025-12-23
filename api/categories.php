@@ -21,6 +21,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 $method = $_SERVER['REQUEST_METHOD'];
 $conn = getConnection();
 
+if (!$conn) {
+    sendResponse(false, null, 'Erro de conexão com o banco de dados. Verifique se o banco foi instalado.', 500);
+}
+
 // Função para enviar resposta JSON
 function sendResponse($success, $data = null, $message = '', $statusCode = 200) {
     http_response_code($statusCode);
@@ -204,8 +208,11 @@ try {
     }
     
 } catch (Exception $e) {
+    error_log("Erro na API de categorias: " . $e->getMessage());
     sendResponse(false, null, 'Erro: ' . $e->getMessage(), 500);
 } finally {
-    $conn->close();
+    if ($conn) {
+        $conn->close();
+    }
 }
 
