@@ -84,9 +84,69 @@ function processFileUpload($fileKey, $type) {
     return null;
 }
 
+// Função para processar multipart/form-data manualmente (para PUT)
+function parseMultipartFormData() {
+    $data = [];
+    $input = file_get_contents('php://input');
+    
+    if (empty($input)) {
+        return $data;
+    }
+    
+    // Obter boundary do Content-Type
+    $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+    if (!preg_match('/boundary=(.+)$/i', $contentType, $matches)) {
+        return $data;
+    }
+    
+    $boundary = '--' . trim($matches[1]);
+    $parts = explode($boundary, $input);
+    
+    foreach ($parts as $part) {
+        if (empty(trim($part)) || $part === '--' || $part === '--\r\n') {
+            continue;
+        }
+        
+        // Separar headers do conteúdo
+        if (preg_match('/Content-Disposition:.*name="([^"]+)"/is', $part, $nameMatch)) {
+            $fieldName = $nameMatch[1];
+            
+            // Pular se for arquivo (já está em $_FILES)
+            if (preg_match('/filename="/', $part)) {
+                continue;
+            }
+            
+            // Extrair valor do campo
+            $value = preg_split('/\r?\n\r?\n/', $part, 2);
+            if (isset($value[1])) {
+                $fieldValue = trim($value[1]);
+                // Remover \r\n final se existir
+                $fieldValue = rtrim($fieldValue, "\r\n");
+                $data[$fieldName] = $fieldValue;
+            }
+        }
+    }
+    
+    return $data;
+}
+
 // Função para obter dados do body da requisição
 function getRequestBody() {
-    // Se for multipart/form-data (FormData), usar $_POST
+    // Se for multipart/form-data (FormData), usar $_POST ou processar manualmente
+    $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+    
+    if (strpos($contentType, 'multipart/form-data') !== false) {
+        // Para POST, $_POST já está populado
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
+            return $_POST;
+        }
+        // Para PUT, processar manualmente
+        if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
+            return parseMultipartFormData();
+        }
+    }
+    
+    // Se for application/json, usar $_POST se disponível
     if (!empty($_POST)) {
         return $_POST;
     }
@@ -181,14 +241,13 @@ try {
             
         case 'PUT':
             // Atualizar produto
+            // Para PUT com FormData, processar manualmente
             $data = getRequestBody();
             
-            // Verificar ID no POST (FormData) ou no body (JSON)
+            // Verificar ID
             $id = null;
             if (isset($data['id'])) {
                 $id = intval($data['id']);
-            } elseif (isset($_POST['id'])) {
-                $id = intval($_POST['id']);
             }
             
             if (!$id) {
