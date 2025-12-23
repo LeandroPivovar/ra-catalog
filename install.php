@@ -69,15 +69,12 @@ try {
         id INT AUTO_INCREMENT PRIMARY KEY,
         nome VARCHAR(255) NOT NULL,
         categoria VARCHAR(100) NOT NULL,
-        categoria_id INT,
         descricao TEXT,
         imagem_url VARCHAR(500),
         modelo_3d_url VARCHAR(500),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_categoria (categoria),
-        INDEX idx_categoria_id (categoria_id),
-        FOREIGN KEY (categoria_id) REFERENCES categorias(id) ON DELETE SET NULL
+        INDEX idx_categoria (categoria)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
     
     if ($conn->query($sql) === TRUE) {
@@ -86,12 +83,32 @@ try {
         throw new Exception("Erro ao criar tabela produtos: " . $conn->error);
     }
     
+    // Verificar e adicionar coluna categoria_id se não existir
+    $result = $conn->query("SHOW COLUMNS FROM produtos LIKE 'categoria_id'");
+    if ($result->num_rows == 0) {
+        $sql = "ALTER TABLE produtos ADD COLUMN categoria_id INT NULL AFTER categoria";
+        if ($conn->query($sql) === TRUE) {
+            echo "Coluna 'categoria_id' adicionada.\n";
+        }
+        
+        $sql = "ALTER TABLE produtos ADD INDEX idx_categoria_id (categoria_id)";
+        $conn->query($sql); // Ignorar erro se já existir
+        
+        $sql = "ALTER TABLE produtos ADD CONSTRAINT fk_produto_categoria 
+                FOREIGN KEY (categoria_id) REFERENCES categorias(id) ON DELETE SET NULL";
+        $conn->query($sql); // Ignorar erro se já existir
+    }
+    
     // Buscar IDs das categorias
     $categoriaIds = [];
     $result = $conn->query("SELECT id, nome FROM categorias");
     while ($row = $result->fetch_assoc()) {
         $categoriaIds[$row['nome']] = $row['id'];
     }
+    
+    // Verificar se categoria_id existe na tabela
+    $result = $conn->query("SHOW COLUMNS FROM produtos LIKE 'categoria_id'");
+    $hasCategoriaId = ($result->num_rows > 0);
     
     // Inserir alguns produtos de exemplo
     $produtosExemplo = [
@@ -106,12 +123,19 @@ try {
         ['Lavadora 12kg', 'Eletrodomésticos', 'Lavadora de roupas com capacidade de 12kg.', 'https://via.placeholder.com/180x180/95E1D3/FFFFFF?text=Lavadora', ''],
     ];
     
-    $stmt = $conn->prepare("INSERT INTO produtos (nome, categoria, categoria_id, descricao, imagem_url, modelo_3d_url) VALUES (?, ?, ?, ?, ?, ?)");
-    
-    foreach ($produtosExemplo as $produto) {
-        $categoriaId = isset($categoriaIds[$produto[1]]) ? $categoriaIds[$produto[1]] : null;
-        $stmt->bind_param("ssisss", $produto[0], $produto[1], $categoriaId, $produto[2], $produto[3], $produto[4]);
-        $stmt->execute();
+    if ($hasCategoriaId) {
+        $stmt = $conn->prepare("INSERT INTO produtos (nome, categoria, categoria_id, descricao, imagem_url, modelo_3d_url) VALUES (?, ?, ?, ?, ?, ?)");
+        foreach ($produtosExemplo as $produto) {
+            $categoriaId = isset($categoriaIds[$produto[1]]) ? $categoriaIds[$produto[1]] : null;
+            $stmt->bind_param("ssisss", $produto[0], $produto[1], $categoriaId, $produto[2], $produto[3], $produto[4]);
+            $stmt->execute();
+        }
+    } else {
+        $stmt = $conn->prepare("INSERT INTO produtos (nome, categoria, descricao, imagem_url, modelo_3d_url) VALUES (?, ?, ?, ?, ?)");
+        foreach ($produtosExemplo as $produto) {
+            $stmt->bind_param("sssss", $produto[0], $produto[1], $produto[2], $produto[3], $produto[4]);
+            $stmt->execute();
+        }
     }
     
     $stmt->close();
