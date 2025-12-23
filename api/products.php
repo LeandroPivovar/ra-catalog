@@ -38,7 +38,14 @@ function sendResponse($success, $data = null, $message = '', $statusCode = 200) 
 
 // Função para processar upload de arquivo
 function processFileUpload($fileKey, $type) {
-    if (!isset($_FILES[$fileKey]) || $_FILES[$fileKey]['error'] !== UPLOAD_ERR_OK) {
+    // Verificar se o arquivo foi enviado
+    if (!isset($_FILES[$fileKey])) {
+        return null;
+    }
+    
+    // Verificar se houve erro no upload
+    if ($_FILES[$fileKey]['error'] !== UPLOAD_ERR_OK) {
+        error_log("Erro no upload de $fileKey: " . $_FILES[$fileKey]['error']);
         return null;
     }
     
@@ -77,8 +84,18 @@ function processFileUpload($fileKey, $type) {
     $fileName = uniqid() . '_' . time() . '.' . $fileExtension;
     $targetPath = $targetDir . $fileName;
     
-    if (move_uploaded_file($file['tmp_name'], $targetPath)) {
-        return 'uploads/' . ($type === 'thumbnail' ? 'thumbnails/' : 'models3d/') . $fileName;
+    // Verificar se é um arquivo realmente enviado ou um temporário criado manualmente
+    if (is_uploaded_file($file['tmp_name'])) {
+        // Arquivo enviado normalmente via POST
+        if (move_uploaded_file($file['tmp_name'], $targetPath)) {
+            return 'uploads/' . ($type === 'thumbnail' ? 'thumbnails/' : 'models3d/') . $fileName;
+        }
+    } else {
+        // Arquivo temporário criado manualmente (PUT com multipart)
+        if (copy($file['tmp_name'], $targetPath)) {
+            unlink($file['tmp_name']); // Remover arquivo temporário
+            return 'uploads/' . ($type === 'thumbnail' ? 'thumbnails/' : 'models3d/') . $fileName;
+        }
     }
     
     return null;
@@ -111,12 +128,33 @@ function parseMultipartFormData() {
         if (preg_match('/Content-Disposition:.*name="([^"]+)"/is', $part, $nameMatch)) {
             $fieldName = $nameMatch[1];
             
-            // Pular se for arquivo (já está em $_FILES)
-            if (preg_match('/filename="/', $part)) {
+            // Verificar se é arquivo
+            if (preg_match('/filename="([^"]+)"/is', $part, $fileMatch)) {
+                // É um arquivo - processar manualmente
+                $fileName = $fileMatch[1];
+                $value = preg_split('/\r?\n\r?\n/', $part, 2);
+                if (isset($value[1])) {
+                    $fileContent = $value[1];
+                    // Remover \r\n final
+                    $fileContent = rtrim($fileContent, "\r\n");
+                    
+                    // Criar arquivo temporário e popular $_FILES manualmente
+                    $tmpName = tempnam(sys_get_temp_dir(), 'upload_');
+                    file_put_contents($tmpName, $fileContent);
+                    
+                    // Popular $_FILES manualmente
+                    $_FILES[$fieldName] = [
+                        'name' => $fileName,
+                        'type' => preg_match('/Content-Type:\s*([^\r\n]+)/i', $part, $typeMatch) ? trim($typeMatch[1]) : 'application/octet-stream',
+                        'tmp_name' => $tmpName,
+                        'error' => UPLOAD_ERR_OK,
+                        'size' => strlen($fileContent)
+                    ];
+                }
                 continue;
             }
             
-            // Extrair valor do campo
+            // Campo normal
             $value = preg_split('/\r?\n\r?\n/', $part, 2);
             if (isset($value[1])) {
                 $fieldValue = trim($value[1]);
@@ -136,11 +174,11 @@ function getRequestBody() {
     $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
     
     if (strpos($contentType, 'multipart/form-data') !== false) {
-        // Para POST, $_POST já está populado
+        // Para POST, $_POST e $_FILES já estão populados
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
             return $_POST;
         }
-        // Para PUT, processar manualmente
+        // Para PUT, processar manualmente (isso também popula $_FILES)
         if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
             return parseMultipartFormData();
         }
@@ -241,8 +279,16 @@ try {
             
         case 'PUT':
             // Atualizar produto
-            // Para PUT com FormData, processar manualmente
-            $data = getRequestBody();
+            // Para PUT com FormData, processar manualmente para popular $_FILES
+            $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+            $data = [];
+            
+            // Se for multipart/form-data, processar manualmente para popular $_FILES
+            if (strpos($contentType, 'multipart/form-data') !== false) {
+                $data = parseMultipartFormData(); // Isso também popula $_FILES
+            } else {
+                $data = getRequestBody();
+            }
             
             // Verificar ID
             $id = null;
@@ -267,14 +313,25 @@ try {
             $descricao = isset($data['descricao']) ? $data['descricao'] : null;
             
             // Processar uploads de arquivos (se houver)
-            $imagem_path = processFileUpload('thumbnail', 'thumbnail');
-            if (!$imagem_path) {
-                $imagem_path = isset($data['imagem_url']) ? $data['imagem_url'] : $currentProduct['imagem_url'];
+            // Agora $_FILES deve estar populado pela parseMultipartFormData
+            $imagem_path = null;
+            if (isset($_FILES['thumbnail']) && $_FILES['thumbnail']['error'] === UPLOAD_ERR_OK) {
+                $imagem_path = processFileUpload('thumbnail', 'thumbnail');
             }
             
-            $modelo_3d_path = processFileUpload('model3d', 'model3d');
+            if (!$imagem_path) {
+                // Se não houve novo upload, manter o existente ou usar do form
+                $imagem_path = isset($data['imagem_url']) ? $data['imagem_url'] : ($currentProduct ? $currentProduct['imagem_url'] : null);
+            }
+            
+            $modelo_3d_path = null;
+            if (isset($_FILES['model3d']) && $_FILES['model3d']['error'] === UPLOAD_ERR_OK) {
+                $modelo_3d_path = processFileUpload('model3d', 'model3d');
+            }
+            
             if (!$modelo_3d_path) {
-                $modelo_3d_path = isset($data['modelo_3d_url']) ? $data['modelo_3d_url'] : $currentProduct['modelo_3d_url'];
+                // Se não houve novo upload, manter o existente ou usar do form
+                $modelo_3d_path = isset($data['modelo_3d_url']) ? $data['modelo_3d_url'] : ($currentProduct ? $currentProduct['modelo_3d_url'] : null);
             }
             
             // Construir query dinamicamente baseado nos campos fornecidos
