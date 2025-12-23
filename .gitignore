@@ -1,0 +1,13 @@
+# Uploads
+uploads/
+!uploads/.gitkeep
+
+# Instalação
+installed.flag
+
+# Logs
+*.log
+
+# Configurações locais
+config/database.local.php
+

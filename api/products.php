@@ -5,12 +5,13 @@
 
 require_once '../config/database.php';
 
-header('Content-Type: application/json; charset=utf-8');
-
 // Permitir CORS
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
+
+// Sempre retornar JSON (mesmo com uploads)
+header('Content-Type: application/json; charset=utf-8');
 
 // Tratar requisições OPTIONS (preflight)
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -31,8 +32,62 @@ function sendResponse($success, $data = null, $message = '', $statusCode = 200) 
     exit;
 }
 
+// Função para processar upload de arquivo
+function processFileUpload($fileKey, $type) {
+    if (!isset($_FILES[$fileKey]) || $_FILES[$fileKey]['error'] !== UPLOAD_ERR_OK) {
+        return null;
+    }
+    
+    $file = $_FILES[$fileKey];
+    
+    // Criar diretórios
+    $uploadDir = '../uploads/';
+    $thumbnailDir = $uploadDir . 'thumbnails/';
+    $model3dDir = $uploadDir . 'models3d/';
+    
+    if (!file_exists($uploadDir)) mkdir($uploadDir, 0755, true);
+    if (!file_exists($thumbnailDir)) mkdir($thumbnailDir, 0755, true);
+    if (!file_exists($model3dDir)) mkdir($model3dDir, 0755, true);
+    
+    // Validar extensões e tamanho
+    if ($type === 'thumbnail') {
+        $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+        $maxSize = 5 * 1024 * 1024; // 5MB
+        $targetDir = $thumbnailDir;
+    } else { // model3d
+        $allowedExtensions = ['glb', 'gltf', 'obj', 'fbx'];
+        $maxSize = 50 * 1024 * 1024; // 50MB
+        $targetDir = $model3dDir;
+    }
+    
+    if ($file['size'] > $maxSize) {
+        return null;
+    }
+    
+    $fileExtension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    if (!in_array($fileExtension, $allowedExtensions)) {
+        return null;
+    }
+    
+    // Gerar nome único e mover arquivo
+    $fileName = uniqid() . '_' . time() . '.' . $fileExtension;
+    $targetPath = $targetDir . $fileName;
+    
+    if (move_uploaded_file($file['tmp_name'], $targetPath)) {
+        return 'uploads/' . ($type === 'thumbnail' ? 'thumbnails/' : 'models3d/') . $fileName;
+    }
+    
+    return null;
+}
+
 // Função para obter dados do body da requisição
 function getRequestBody() {
+    // Se for multipart/form-data, usar $_POST
+    if (!empty($_POST)) {
+        return $_POST;
+    }
+    
+    // Caso contrário, tentar JSON
     $data = json_decode(file_get_contents('php://input'), true);
     return $data ?: [];
 }
@@ -90,11 +145,20 @@ try {
             $nome = $data['nome'];
             $categoria = $data['categoria'];
             $descricao = isset($data['descricao']) ? $data['descricao'] : '';
-            $imagem_url = isset($data['imagem_url']) ? $data['imagem_url'] : '';
-            $modelo_3d_url = isset($data['modelo_3d_url']) ? $data['modelo_3d_url'] : '';
+            
+            // Processar uploads de arquivos
+            $imagem_path = processFileUpload('thumbnail', 'thumbnail');
+            if (!$imagem_path && isset($data['imagem_url'])) {
+                $imagem_path = $data['imagem_url']; // Fallback para URL
+            }
+            
+            $modelo_3d_path = processFileUpload('model3d', 'model3d');
+            if (!$modelo_3d_path && isset($data['modelo_3d_url'])) {
+                $modelo_3d_path = $data['modelo_3d_url']; // Fallback para URL
+            }
             
             $stmt = $conn->prepare("INSERT INTO produtos (nome, categoria, descricao, imagem_url, modelo_3d_url) VALUES (?, ?, ?, ?, ?)");
-            $stmt->bind_param("sssss", $nome, $categoria, $descricao, $imagem_url, $modelo_3d_url);
+            $stmt->bind_param("sssss", $nome, $categoria, $descricao, $imagem_path, $modelo_3d_path);
             
             if ($stmt->execute()) {
                 $id = $conn->insert_id;
@@ -115,11 +179,29 @@ try {
             }
             
             $id = intval($data['id']);
+            
+            // Buscar produto atual para manter arquivos existentes se não houver novos uploads
+            $stmt = $conn->prepare("SELECT imagem_url, modelo_3d_url FROM produtos WHERE id = ?");
+            $stmt->bind_param("i", $id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $currentProduct = $result->fetch_assoc();
+            $stmt->close();
+            
             $nome = isset($data['nome']) ? $data['nome'] : null;
             $categoria = isset($data['categoria']) ? $data['categoria'] : null;
             $descricao = isset($data['descricao']) ? $data['descricao'] : null;
-            $imagem_url = isset($data['imagem_url']) ? $data['imagem_url'] : null;
-            $modelo_3d_url = isset($data['modelo_3d_url']) ? $data['modelo_3d_url'] : null;
+            
+            // Processar uploads de arquivos (se houver)
+            $imagem_path = processFileUpload('thumbnail', 'thumbnail');
+            if (!$imagem_path) {
+                $imagem_path = isset($data['imagem_url']) ? $data['imagem_url'] : $currentProduct['imagem_url'];
+            }
+            
+            $modelo_3d_path = processFileUpload('model3d', 'model3d');
+            if (!$modelo_3d_path) {
+                $modelo_3d_path = isset($data['modelo_3d_url']) ? $data['modelo_3d_url'] : $currentProduct['modelo_3d_url'];
+            }
             
             // Construir query dinamicamente baseado nos campos fornecidos
             $fields = [];
@@ -141,14 +223,14 @@ try {
                 $params[] = $descricao;
                 $types .= "s";
             }
-            if ($imagem_url !== null) {
+            if ($imagem_path !== null) {
                 $fields[] = "imagem_url = ?";
-                $params[] = $imagem_url;
+                $params[] = $imagem_path;
                 $types .= "s";
             }
-            if ($modelo_3d_url !== null) {
+            if ($modelo_3d_path !== null) {
                 $fields[] = "modelo_3d_url = ?";
-                $params[] = $modelo_3d_url;
+                $params[] = $modelo_3d_path;
                 $types .= "s";
             }
             

@@ -189,6 +189,13 @@ body {
     gap: 20px;
 }
 
+/* Categories List */
+.categories-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 20px;
+}
+
 .product-card {
     background: white;
     border: 2px solid #e0e0e0;

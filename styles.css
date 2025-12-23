@@ -212,6 +212,14 @@ body {
     display: none;
 }
 
+.loading-products {
+    text-align: center;
+    padding: 40px 20px;
+    color: #666;
+    font-size: 16px;
+    width: 100%;
+}
+
 .product-card {
     min-width: 200px;
     background: white;

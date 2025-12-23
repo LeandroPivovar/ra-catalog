@@ -225,14 +225,67 @@
     <script>
         // Obter parâmetros da URL
         const urlParams = new URLSearchParams(window.location.search);
+        const productId = urlParams.get('id');
         const productName = urlParams.get('name') || 'Produto';
         const category = urlParams.get('category') || '';
 
-        // Atualizar informações do produto
-        document.getElementById('productTitle').textContent = productName;
-        if (category) {
-            document.getElementById('productCategory').textContent = `Categoria: ${category}`;
+        let productData = null;
+
+        // Carregar dados do produto se tiver ID
+        async function loadProductData() {
+            if (productId) {
+                try {
+                    const response = await fetch(`api/products.php?id=${productId}`);
+                    const result = await response.json();
+                    if (result.success && result.data) {
+                        productData = result.data;
+                        updateProductDisplay();
+                    }
+                } catch (error) {
+                    console.error('Erro ao carregar produto:', error);
+                }
+            } else {
+                // Usar dados dos parâmetros
+                document.getElementById('productTitle').textContent = productName;
+                if (category) {
+                    document.getElementById('productCategory').textContent = `Categoria: ${category}`;
+                }
+            }
         }
+
+        function updateProductDisplay() {
+            if (!productData) return;
+            
+            document.getElementById('productTitle').textContent = productData.nome;
+            if (productData.categoria) {
+                document.getElementById('productCategory').textContent = `Categoria: ${productData.categoria}`;
+            }
+            
+            // Atualizar imagem 3D
+            const productImage = document.getElementById('productImage');
+            if (productData.imagem_url) {
+                const imagePath = productData.imagem_url.startsWith('http') 
+                    ? productData.imagem_url 
+                    : productData.imagem_url;
+                productImage.src = imagePath;
+            }
+            
+            // Atualizar descrição
+            if (productData.descricao) {
+                document.getElementById('productDescription').innerHTML = `
+                    <p>${escapeHtml(productData.descricao)}</p>
+                `;
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Carregar dados ao iniciar
+        loadProductData();
 
         // Função para abrir AR
         function openAR() {
@@ -241,10 +294,18 @@
             const isIOS = /iPad|iPhone|iPod/.test(userAgent) && !window.MSStream;
             const isAndroid = /android/i.test(userAgent);
             
+            // Determinar caminho do modelo 3D
+            let modelPath = 'https://modelviewer.dev/shared-assets/models/Astronaut.glb'; // Fallback
+            if (productData && productData.modelo_3d_url) {
+                modelPath = productData.modelo_3d_url.startsWith('http') 
+                    ? productData.modelo_3d_url 
+                    : productData.modelo_3d_url;
+            }
+            
             // Criar model-viewer para AR
             const modelViewer = document.createElement('model-viewer');
-            modelViewer.src = 'https://modelviewer.dev/shared-assets/models/Astronaut.glb';
-            modelViewer.alt = productName;
+            modelViewer.src = modelPath;
+            modelViewer.alt = productData ? productData.nome : productName;
             modelViewer.ar = true;
             modelViewer.arModes = isIOS ? 'quick-look' : (isAndroid ? 'scene-viewer' : 'webxr scene-viewer quick-look');
             modelViewer.cameraControls = true;
