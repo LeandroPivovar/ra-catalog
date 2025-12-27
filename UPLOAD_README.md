@@ -94,3 +94,4 @@ max_execution_time = 300
 - Verifique se o arquivo não está corrompido
 - Verifique se o navegador suporta WebXR/AR
 
+

@@ -24,3 +24,4 @@ echo ""
 echo "Permissões configuradas:"
 ls -la /var/www/ra-catalog/uploads
 
+

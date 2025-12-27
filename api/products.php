@@ -174,8 +174,19 @@ function getRequestBody() {
     $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
     
     if (strpos($contentType, 'multipart/form-data') !== false) {
-        // Para POST, $_POST e $_FILES já estão populados
-        if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
+        // Para POST, $_POST e $_FILES já estão populados normalmente
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            // Se $_POST estiver vazio mas houver dados no body, processar manualmente
+            // Isso pode acontecer quando há arquivos grandes ou problemas de configuração
+            if (empty($_POST)) {
+                $parsed = parseMultipartFormData();
+                // Se conseguiu parsear, usar os dados parseados
+                if (!empty($parsed)) {
+                    // Mesclar com $_POST para que $_POST também fique disponível
+                    $_POST = array_merge($_POST, $parsed);
+                    return $parsed;
+                }
+            }
             return $_POST;
         }
         // Para PUT, processar manualmente (isso também popula $_FILES)
@@ -243,10 +254,23 @@ try {
             
         case 'POST':
             // Criar ou atualizar produto (se tiver ID, atualiza)
-            $data = getRequestBody();
+            // Para multipart/form-data, tentar usar $_POST primeiro (mais confiável)
+            $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+            if (strpos($contentType, 'multipart/form-data') !== false && !empty($_POST)) {
+                $data = $_POST;
+            } else {
+                $data = getRequestBody();
+            }
+            
+            // Debug temporário
+            error_log("POST Request - Content-Type: " . $contentType);
+            error_log("POST Request - _POST keys: " . implode(', ', array_keys($_POST)));
+            error_log("POST Request - data keys: " . implode(', ', array_keys($data)));
+            error_log("POST Request - data['id']: " . (isset($data['id']) ? $data['id'] : 'NOT SET'));
             
             // Se tiver ID, é atualização
-            if (isset($data['id']) && $data['id'] !== '') {
+            $hasId = isset($data['id']) && $data['id'] !== '' && $data['id'] !== null && $data['id'] !== 'undefined';
+            if ($hasId) {
                 $id = intval($data['id']);
                 
                 // Buscar produto atual para manter arquivos existentes se não houver novos uploads
@@ -261,9 +285,25 @@ try {
                     sendResponse(false, null, 'Produto não encontrado para atualização', 404);
                 }
                 
-                $nome = isset($data['nome']) ? $data['nome'] : null;
-                $categoria = isset($data['categoria']) ? $data['categoria'] : null;
+                $nome = isset($data['nome']) && $data['nome'] !== '' ? $data['nome'] : null;
+                $categoria = isset($data['categoria']) && $data['categoria'] !== '' ? $data['categoria'] : null;
                 $descricao = isset($data['descricao']) ? $data['descricao'] : null;
+                
+                // Validar campos obrigatórios para atualização
+                if ($nome === null && $categoria === null) {
+                    // Se não tem nome nem categoria, buscar do banco para manter valores atuais
+                    $stmt = $conn->prepare("SELECT nome, categoria FROM produtos WHERE id = ?");
+                    $stmt->bind_param("i", $id);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    $current = $result->fetch_assoc();
+                    $stmt->close();
+                    
+                    if ($current) {
+                        if ($nome === null) $nome = $current['nome'];
+                        if ($categoria === null) $categoria = $current['categoria'];
+                    }
+                }
                 
                 // Processar uploads de arquivos (se houver)
                 $imagem_path = null;

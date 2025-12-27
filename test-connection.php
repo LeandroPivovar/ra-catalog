@@ -59,3 +59,4 @@ foreach ($tables as $table) {
 $conn->close();
 echo "\n=== Teste concluído ===\n";
 
+

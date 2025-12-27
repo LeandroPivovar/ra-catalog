@@ -152,3 +152,4 @@ location ~ /\. {
 - Cache e compressão estão configurados
 - API está acessível com CORS habilitado
 
+

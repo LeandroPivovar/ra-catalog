@@ -26,3 +26,4 @@ Isso irá:
 
 Se preferir, delete o arquivo `installed.flag` e execute `install.php` novamente. O código agora verifica se a coluna existe antes de tentar usá-la.
 
+

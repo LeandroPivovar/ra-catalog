@@ -104,3 +104,4 @@ echo "   upload_tmp_dir: " . (ini_get('upload_tmp_dir') ?: 'Padrão do sistema')
 
 echo "\n=== Teste concluído ===\n";
 
+

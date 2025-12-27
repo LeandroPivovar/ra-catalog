@@ -222,3 +222,4 @@ curl -X DELETE http://localhost/ifood-ra/api/products.php?id=1
 - O sistema cria automaticamente timestamps
 - A instalação insere produtos de exemplo automaticamente
 
+
