@@ -261,15 +261,43 @@
                 document.getElementById('productCategory').textContent = `Categoria: ${productData.categoria}`;
             }
             
-            // Atualizar imagem 3D
-            const productImage = document.getElementById('productImage');
-            if (productData.imagem_url && productData.imagem_url.trim() !== '') {
-                let imagePath = productData.imagem_url;
-                if (!imagePath.startsWith('http')) {
-                    // Arquivo local - o caminho já vem completo do banco (ex: uploads/thumbnails/arquivo.jpg)
-                    imagePath = imagePath;
+            const container = document.getElementById('product3dContainer');
+            
+            // Verificar se há modelo 3D
+            if (productData.modelo_3d_url && productData.modelo_3d_url.trim() !== '') {
+                let modelPath = productData.modelo_3d_url;
+                if (!modelPath.startsWith('http')) {
+                    // Arquivo local - garantir que o caminho está correto
+                    // O caminho já vem como: uploads/models3d/arquivo.glb
+                    modelPath = modelPath;
                 }
-                productImage.src = imagePath;
+                
+                // Criar model-viewer automaticamente
+                const modelViewer = document.createElement('model-viewer');
+                modelViewer.src = modelPath;
+                modelViewer.alt = productData.nome;
+                modelViewer.cameraControls = true;
+                modelViewer.autoRotate = true;
+                modelViewer.autoRotateDelay = 0;
+                modelViewer.style.width = '100%';
+                modelViewer.style.height = '100%';
+                modelViewer.style.borderRadius = '15px';
+                
+                // Tratamento de erros
+                modelViewer.addEventListener('error', (event) => {
+                    console.error('Erro ao carregar modelo 3D:', event);
+                    // Fallback para imagem se o modelo 3D falhar
+                    showImageFallback(container);
+                });
+                
+                // Substituir conteúdo do container
+                container.innerHTML = '';
+                container.appendChild(modelViewer);
+                
+                console.log('Modelo 3D carregado:', modelPath);
+            } else {
+                // Se não houver modelo 3D, mostrar imagem
+                showImageFallback(container);
             }
             
             // Atualizar descrição
@@ -278,6 +306,26 @@
                     <p>${escapeHtml(productData.descricao)}</p>
                 `;
             }
+        }
+        
+        function showImageFallback(container) {
+            const productImage = document.createElement('img');
+            productImage.id = 'productImage';
+            productImage.style.cssText = 'width: 100%; height: 100%; object-fit: contain; animation: rotate3d 20s linear infinite; transform-style: preserve-3d;';
+            
+            if (productData && productData.imagem_url && productData.imagem_url.trim() !== '') {
+                let imagePath = productData.imagem_url;
+                if (!imagePath.startsWith('http')) {
+                    imagePath = imagePath;
+                }
+                productImage.src = imagePath;
+                productImage.alt = productData.nome;
+            } else {
+                productImage.src = 'https://via.placeholder.com/500x500/2196F3/FFFFFF?text=Produto+3D';
+            }
+            
+            container.innerHTML = '';
+            container.appendChild(productImage);
         }
 
         function escapeHtml(text) {
@@ -296,32 +344,38 @@
             const isIOS = /iPad|iPhone|iPod/.test(userAgent) && !window.MSStream;
             const isAndroid = /android/i.test(userAgent);
             
-            // Determinar caminho do modelo 3D
-            let modelPath = 'https://modelviewer.dev/shared-assets/models/Astronaut.glb'; // Fallback
-            if (productData && productData.modelo_3d_url && productData.modelo_3d_url.trim() !== '') {
-                if (productData.modelo_3d_url.startsWith('http')) {
-                    modelPath = productData.modelo_3d_url;
-                } else {
-                    // Arquivo local - o caminho já vem completo do banco (ex: uploads/models3d/arquivo.glb)
-                    modelPath = productData.modelo_3d_url;
+            // Verificar se já existe um model-viewer no container
+            let modelViewer = container.querySelector('model-viewer');
+            
+            if (!modelViewer) {
+                // Determinar caminho do modelo 3D
+                let modelPath = 'https://modelviewer.dev/shared-assets/models/Astronaut.glb'; // Fallback
+                if (productData && productData.modelo_3d_url && productData.modelo_3d_url.trim() !== '') {
+                    if (productData.modelo_3d_url.startsWith('http')) {
+                        modelPath = productData.modelo_3d_url;
+                    } else {
+                        // Arquivo local - o caminho já vem completo do banco (ex: uploads/models3d/arquivo.glb)
+                        modelPath = productData.modelo_3d_url;
+                    }
                 }
+                
+                // Criar model-viewer para AR
+                modelViewer = document.createElement('model-viewer');
+                modelViewer.src = modelPath;
+                modelViewer.alt = productData ? productData.nome : productName;
+                modelViewer.cameraControls = true;
+                modelViewer.autoRotate = true;
+                modelViewer.style.width = '100%';
+                modelViewer.style.height = '100%';
+                modelViewer.style.borderRadius = '15px';
+                
+                container.innerHTML = '';
+                container.appendChild(modelViewer);
             }
             
-            // Criar model-viewer para AR
-            const modelViewer = document.createElement('model-viewer');
-            modelViewer.src = modelPath;
-            modelViewer.alt = productData ? productData.nome : productName;
+            // Ativar AR no model-viewer existente ou recém-criado
             modelViewer.ar = true;
             modelViewer.arModes = isIOS ? 'quick-look' : (isAndroid ? 'scene-viewer' : 'webxr scene-viewer quick-look');
-            modelViewer.cameraControls = true;
-            modelViewer.autoRotate = true;
-            modelViewer.style.width = '100%';
-            modelViewer.style.height = '100%';
-            modelViewer.style.borderRadius = '15px';
-            
-            // Substituir a imagem pelo model-viewer
-            container.innerHTML = '';
-            container.appendChild(modelViewer);
             
             // Verificar status do AR
             modelViewer.addEventListener('ar-status', (event) => {
