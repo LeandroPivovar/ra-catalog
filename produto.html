@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.3.0/model-viewer.min.js"></script>
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"></script>
     <link rel="stylesheet" href="styles.css">
     <style>
         .product-page {
@@ -58,11 +58,24 @@
             min-height: 500px;
         }
 
+        .viewer-wrapper {
+            position: relative;
+            width: 100%;
+            max-width: 100%;
+        }
+
+        .viewer-wrapper model-viewer {
+            width: 100%;
+            height: 600px;
+            background: #f5f5f7;
+            border-radius: 18px;
+        }
+
         #product3dContainer {
             width: 100%;
-            height: 500px;
-            background: linear-gradient(135deg, #2196F3 0%, #64B5F6 100%);
-            border-radius: 15px;
+            height: 600px;
+            background: #f5f5f7;
+            border-radius: 18px;
             position: relative;
             overflow: hidden;
             display: flex;
@@ -73,6 +86,9 @@
         #productImage {
             animation: rotate3d 20s linear infinite;
             transform-style: preserve-3d;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
         }
 
         @keyframes rotate3d {
@@ -151,13 +167,6 @@
             font-size: 24px;
         }
 
-        model-viewer {
-            width: 100%;
-            height: 500px;
-            border-radius: 15px;
-            --poster-color: transparent;
-        }
-
         @media (max-width: 768px) {
             .product-details {
                 grid-template-columns: 1fr;
@@ -178,7 +187,11 @@
             }
 
             #product3dContainer {
-                height: 400px;
+                height: 420px;
+            }
+
+            .viewer-wrapper model-viewer {
+                height: 420px;
             }
         }
     </style>
@@ -196,8 +209,10 @@
         
         <div class="product-details">
             <div class="product-3d-container">
-                <div id="product3dContainer">
-                    <img src="https://via.placeholder.com/500x500/2196F3/FFFFFF?text=Produto+3D" alt="Produto 3D" id="productImage" style="width: 100%; height: 100%; object-fit: contain;">
+                <div class="viewer-wrapper">
+                    <div id="product3dContainer">
+                        <img src="https://via.placeholder.com/500x500/2196F3/FFFFFF?text=Produto+3D" alt="Produto 3D" id="productImage">
+                    </div>
                 </div>
             </div>
 
@@ -261,6 +276,7 @@
                 document.getElementById('productCategory').textContent = `Categoria: ${productData.categoria}`;
             }
             
+            const viewerWrapper = document.querySelector('.viewer-wrapper');
             const container = document.getElementById('product3dContainer');
             
             // Verificar se há modelo 3D
@@ -272,16 +288,20 @@
                     modelPath = modelPath;
                 }
                 
-                // Criar model-viewer automaticamente
+                // Limpar container
+                container.innerHTML = '';
+                
+                // Criar model-viewer automaticamente com configurações do AR3D.html
                 const modelViewer = document.createElement('model-viewer');
                 modelViewer.src = modelPath;
                 modelViewer.alt = productData.nome;
-                modelViewer.cameraControls = true;
-                modelViewer.autoRotate = true;
-                modelViewer.autoRotateDelay = 0;
-                modelViewer.style.width = '100%';
-                modelViewer.style.height = '100%';
-                modelViewer.style.borderRadius = '15px';
+                modelViewer.setAttribute('camera-controls', '');
+                modelViewer.setAttribute('loading', 'lazy');
+                modelViewer.setAttribute('ar', '');
+                modelViewer.setAttribute('ar-modes', 'scene-viewer quick-look webxr');
+                modelViewer.setAttribute('ar-scale', 'auto');
+                modelViewer.setAttribute('ar-placement', 'floor');
+                modelViewer.setAttribute('shadow-intensity', '1');
                 
                 // Tratamento de erros
                 modelViewer.addEventListener('error', (event) => {
@@ -290,8 +310,7 @@
                     showImageFallback(container);
                 });
                 
-                // Substituir conteúdo do container
-                container.innerHTML = '';
+                // Adicionar model-viewer ao container
                 container.appendChild(modelViewer);
                 
                 console.log('Modelo 3D carregado:', modelPath);
@@ -309,6 +328,9 @@
         }
         
         function showImageFallback(container) {
+            // Limpar container
+            container.innerHTML = '';
+            
             const productImage = document.createElement('img');
             productImage.id = 'productImage';
             productImage.style.cssText = 'width: 100%; height: 100%; object-fit: contain; animation: rotate3d 20s linear infinite; transform-style: preserve-3d;';
@@ -319,12 +341,11 @@
                     imagePath = imagePath;
                 }
                 productImage.src = imagePath;
-                productImage.alt = productData.nome;
+                productImage.alt = productData ? productData.nome : 'Produto';
             } else {
                 productImage.src = 'https://via.placeholder.com/500x500/2196F3/FFFFFF?text=Produto+3D';
             }
             
-            container.innerHTML = '';
             container.appendChild(productImage);
         }
 
@@ -337,61 +358,38 @@
         // Carregar dados ao iniciar
         loadProductData();
 
-        // Função para abrir AR
+        // Função para abrir AR (o model-viewer já tem AR habilitado, esta função apenas garante que está ativo)
         function openAR() {
             const container = document.getElementById('product3dContainer');
-            const userAgent = navigator.userAgent || navigator.vendor || window.opera;
-            const isIOS = /iPad|iPhone|iPod/.test(userAgent) && !window.MSStream;
-            const isAndroid = /android/i.test(userAgent);
+            const modelViewer = container.querySelector('model-viewer');
             
-            // Verificar se já existe um model-viewer no container
-            let modelViewer = container.querySelector('model-viewer');
-            
-            if (!modelViewer) {
-                // Determinar caminho do modelo 3D
-                let modelPath = 'https://modelviewer.dev/shared-assets/models/Astronaut.glb'; // Fallback
-                if (productData && productData.modelo_3d_url && productData.modelo_3d_url.trim() !== '') {
-                    if (productData.modelo_3d_url.startsWith('http')) {
-                        modelPath = productData.modelo_3d_url;
-                    } else {
-                        // Arquivo local - o caminho já vem completo do banco (ex: uploads/models3d/arquivo.glb)
-                        modelPath = productData.modelo_3d_url;
+            if (modelViewer) {
+                // O AR já está configurado no model-viewer
+                // Verificar status do AR
+                modelViewer.addEventListener('ar-status', (event) => {
+                    if (event.detail.status === 'failed') {
+                        alert('AR não está disponível no seu dispositivo. Tente em um dispositivo móvel compatível.');
+                    } else if (event.detail.status === 'not-presenting') {
+                        // AR está disponível
+                        const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+                        const isIOS = /iPad|iPhone|iPod/.test(userAgent) && !window.MSStream;
+                        const isAndroid = /android/i.test(userAgent);
+                        
+                        if (isIOS) {
+                            alert('Toque no ícone AR que aparecerá no modelo 3D para visualizar em realidade aumentada usando Quick Look!');
+                        } else if (isAndroid) {
+                            alert('Toque no ícone AR que aparecerá no modelo 3D para visualizar em realidade aumentada!');
+                        }
                     }
+                });
+                
+                // Tentar ativar AR programaticamente (se suportado)
+                if (modelViewer.activateAR) {
+                    modelViewer.activateAR();
                 }
-                
-                // Criar model-viewer para AR
-                modelViewer = document.createElement('model-viewer');
-                modelViewer.src = modelPath;
-                modelViewer.alt = productData ? productData.nome : productName;
-                modelViewer.cameraControls = true;
-                modelViewer.autoRotate = true;
-                modelViewer.style.width = '100%';
-                modelViewer.style.height = '100%';
-                modelViewer.style.borderRadius = '15px';
-                
-                container.innerHTML = '';
-                container.appendChild(modelViewer);
+            } else {
+                alert('Modelo 3D não carregado. Por favor, recarregue a página.');
             }
-            
-            // Ativar AR no model-viewer existente ou recém-criado
-            modelViewer.ar = true;
-            modelViewer.arModes = isIOS ? 'quick-look' : (isAndroid ? 'scene-viewer' : 'webxr scene-viewer quick-look');
-            
-            // Verificar status do AR
-            modelViewer.addEventListener('ar-status', (event) => {
-                if (event.detail.status === 'failed') {
-                    alert('AR não está disponível no seu dispositivo. Tente em um dispositivo móvel compatível.');
-                } else if (event.detail.status === 'not-presenting') {
-                    // AR está disponível, mostrar instruções
-                    if (isIOS) {
-                        alert('Toque no ícone AR que aparecerá no modelo 3D para visualizar em realidade aumentada usando Quick Look!');
-                    } else if (isAndroid) {
-                        alert('Toque no ícone AR que aparecerá no modelo 3D para visualizar em realidade aumentada!');
-                    }
-                }
-            });
-            
-            // O model-viewer mostrará automaticamente o botão AR quando disponível
         }
 
         // Adicionar evento ao botão AR
