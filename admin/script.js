@@ -202,6 +202,12 @@ async function editProduct(id) {
 async function saveProduct(event) {
     event.preventDefault();
     
+    // Obter botão de submit e desabilitar com loading
+    const submitButton = event.target.querySelector('button[type="submit"]');
+    const originalText = submitButton.textContent;
+    submitButton.disabled = true;
+    submitButton.innerHTML = '⏳ Salvando...';
+    
     // Criar FormData para enviar arquivos
     const formData = new FormData();
     formData.append('nome', document.getElementById('productName').value);
@@ -212,11 +218,13 @@ async function saveProduct(event) {
     const thumbnailFile = document.getElementById('productThumbnail').files[0];
     if (thumbnailFile) {
         formData.append('thumbnail', thumbnailFile);
+        console.log('Enviando thumbnail:', thumbnailFile.name, 'Tamanho:', thumbnailFile.size);
     }
     
     const model3dFile = document.getElementById('productModel3d').files[0];
     if (model3dFile) {
         formData.append('model3d', model3dFile);
+        console.log('Enviando modelo 3D:', model3dFile.name, 'Tamanho:', model3dFile.size, 'Tipo:', model3dFile.type);
     }
     
     try {
@@ -247,6 +255,10 @@ async function saveProduct(event) {
         }
     } catch (error) {
         alert('Erro ao salvar produto: ' + error.message);
+    } finally {
+        // Reabilitar botão
+        submitButton.disabled = false;
+        submitButton.textContent = originalText;
     }
 }
 

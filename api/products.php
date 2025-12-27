@@ -38,27 +38,62 @@ function sendResponse($success, $data = null, $message = '', $statusCode = 200) 
 
 // Função para processar upload de arquivo
 function processFileUpload($fileKey, $type) {
+    // Debug: verificar se o arquivo foi enviado
+    error_log("processFileUpload chamado - fileKey: $fileKey, type: $type");
+    error_log("_FILES keys disponíveis: " . implode(', ', array_keys($_FILES)));
+    
     // Verificar se o arquivo foi enviado
     if (!isset($_FILES[$fileKey])) {
-        return null;
-    }
-    
-    // Verificar se houve erro no upload
-    if ($_FILES[$fileKey]['error'] !== UPLOAD_ERR_OK) {
-        error_log("Erro no upload de $fileKey: " . $_FILES[$fileKey]['error']);
+        error_log("Arquivo $fileKey não encontrado em _FILES");
         return null;
     }
     
     $file = $_FILES[$fileKey];
+    error_log("Arquivo $fileKey encontrado - nome: {$file['name']}, tamanho: {$file['size']}, erro: {$file['error']}");
+    
+    // Verificar se houve erro no upload
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        $errorMessages = [
+            UPLOAD_ERR_INI_SIZE => 'O arquivo excede upload_max_filesize',
+            UPLOAD_ERR_FORM_SIZE => 'O arquivo excede MAX_FILE_SIZE',
+            UPLOAD_ERR_PARTIAL => 'O arquivo foi enviado parcialmente',
+            UPLOAD_ERR_NO_FILE => 'Nenhum arquivo foi enviado',
+            UPLOAD_ERR_NO_TMP_DIR => 'Falta pasta temporária',
+            UPLOAD_ERR_CANT_WRITE => 'Falha ao escrever arquivo no disco',
+            UPLOAD_ERR_EXTENSION => 'Uma extensão PHP interrompeu o upload'
+        ];
+        $errorMsg = isset($errorMessages[$file['error']]) ? $errorMessages[$file['error']] : "Erro desconhecido: {$file['error']}";
+        error_log("Erro no upload de $fileKey: $errorMsg");
+        return null;
+    }
     
     // Criar diretórios
     $uploadDir = '../uploads/';
     $thumbnailDir = $uploadDir . 'thumbnails/';
     $model3dDir = $uploadDir . 'models3d/';
     
-    if (!file_exists($uploadDir)) mkdir($uploadDir, 0755, true);
-    if (!file_exists($thumbnailDir)) mkdir($thumbnailDir, 0755, true);
-    if (!file_exists($model3dDir)) mkdir($model3dDir, 0755, true);
+    if (!file_exists($uploadDir)) {
+        mkdir($uploadDir, 0755, true);
+        error_log("Diretório $uploadDir criado");
+    }
+    if (!file_exists($thumbnailDir)) {
+        mkdir($thumbnailDir, 0755, true);
+        error_log("Diretório $thumbnailDir criado");
+    }
+    if (!file_exists($model3dDir)) {
+        mkdir($model3dDir, 0755, true);
+        error_log("Diretório $model3dDir criado");
+    }
+    
+    // Verificar permissões de escrita
+    if (!is_writable($uploadDir)) {
+        error_log("ERRO: Diretório $uploadDir não tem permissão de escrita");
+        return null;
+    }
+    if ($type === 'model3d' && !is_writable($model3dDir)) {
+        error_log("ERRO: Diretório $model3dDir não tem permissão de escrita");
+        return null;
+    }
     
     // Validar extensões e tamanho
     if ($type === 'thumbnail') {
@@ -72,11 +107,13 @@ function processFileUpload($fileKey, $type) {
     }
     
     if ($file['size'] > $maxSize) {
+        error_log("ERRO: Arquivo muito grande. Tamanho: {$file['size']}, Máximo: $maxSize");
         return null;
     }
     
     $fileExtension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
     if (!in_array($fileExtension, $allowedExtensions)) {
+        error_log("ERRO: Extensão não permitida. Extensão: $fileExtension, Permitidas: " . implode(', ', $allowedExtensions));
         return null;
     }
     
@@ -84,17 +121,27 @@ function processFileUpload($fileKey, $type) {
     $fileName = uniqid() . '_' . time() . '.' . $fileExtension;
     $targetPath = $targetDir . $fileName;
     
+    error_log("Tentando mover arquivo de {$file['tmp_name']} para $targetPath");
+    
     // Verificar se é um arquivo realmente enviado ou um temporário criado manualmente
     if (is_uploaded_file($file['tmp_name'])) {
         // Arquivo enviado normalmente via POST
         if (move_uploaded_file($file['tmp_name'], $targetPath)) {
-            return 'uploads/' . ($type === 'thumbnail' ? 'thumbnails/' : 'models3d/') . $fileName;
+            $relativePath = 'uploads/' . ($type === 'thumbnail' ? 'thumbnails/' : 'models3d/') . $fileName;
+            error_log("SUCCESS: Arquivo salvo em $relativePath");
+            return $relativePath;
+        } else {
+            error_log("ERRO: Falha ao mover arquivo. Verifique permissões de escrita em $targetDir");
         }
     } else {
         // Arquivo temporário criado manualmente (PUT com multipart)
         if (copy($file['tmp_name'], $targetPath)) {
             unlink($file['tmp_name']); // Remover arquivo temporário
-            return 'uploads/' . ($type === 'thumbnail' ? 'thumbnails/' : 'models3d/') . $fileName;
+            $relativePath = 'uploads/' . ($type === 'thumbnail' ? 'thumbnails/' : 'models3d/') . $fileName;
+            error_log("SUCCESS: Arquivo copiado para $relativePath");
+            return $relativePath;
+        } else {
+            error_log("ERRO: Falha ao copiar arquivo. Verifique permissões de escrita em $targetDir");
         }
     }
     
@@ -270,6 +317,14 @@ try {
             
             // Se tiver ID, é atualização
             $hasId = isset($data['id']) && $data['id'] !== '' && $data['id'] !== null && $data['id'] !== 'undefined';
+            
+            // Debug temporário (remover após resolver problema)
+            if (!$hasId) {
+                error_log("POST sem ID - criando novo produto");
+            } else {
+                error_log("POST com ID - atualizando produto ID: " . $data['id']);
+            }
+            
             if ($hasId) {
                 $id = intval($data['id']);
                 
@@ -306,9 +361,15 @@ try {
                 }
                 
                 // Processar uploads de arquivos (se houver)
+                error_log("Verificando uploads - _FILES keys: " . implode(', ', array_keys($_FILES)));
+                
                 $imagem_path = null;
                 if (isset($_FILES['thumbnail']) && $_FILES['thumbnail']['error'] === UPLOAD_ERR_OK) {
+                    error_log("Processando upload de thumbnail");
                     $imagem_path = processFileUpload('thumbnail', 'thumbnail');
+                    if ($imagem_path) {
+                        error_log("Thumbnail salvo: $imagem_path");
+                    }
                 }
                 if (!$imagem_path) {
                     $imagem_path = isset($data['imagem_url']) ? $data['imagem_url'] : $currentProduct['imagem_url'];
@@ -316,7 +377,19 @@ try {
                 
                 $modelo_3d_path = null;
                 if (isset($_FILES['model3d']) && $_FILES['model3d']['error'] === UPLOAD_ERR_OK) {
+                    error_log("Processando upload de modelo 3D");
                     $modelo_3d_path = processFileUpload('model3d', 'model3d');
+                    if ($modelo_3d_path) {
+                        error_log("Modelo 3D salvo: $modelo_3d_path");
+                    } else {
+                        error_log("ERRO: Falha ao processar upload do modelo 3D");
+                    }
+                } else {
+                    if (isset($_FILES['model3d'])) {
+                        error_log("Modelo 3D não enviado corretamente. Erro: " . $_FILES['model3d']['error']);
+                    } else {
+                        error_log("Modelo 3D não encontrado em _FILES");
+                    }
                 }
                 if (!$modelo_3d_path) {
                     $modelo_3d_path = isset($data['modelo_3d_url']) ? $data['modelo_3d_url'] : $currentProduct['modelo_3d_url'];
@@ -382,12 +455,36 @@ try {
                 $descricao = isset($data['descricao']) ? $data['descricao'] : '';
                 
                 // Processar uploads de arquivos
-                $imagem_path = processFileUpload('thumbnail', 'thumbnail');
+                error_log("Criando novo produto - Verificando uploads - _FILES keys: " . implode(', ', array_keys($_FILES)));
+                
+                $imagem_path = null;
+                if (isset($_FILES['thumbnail']) && $_FILES['thumbnail']['error'] === UPLOAD_ERR_OK) {
+                    error_log("Processando upload de thumbnail (criação)");
+                    $imagem_path = processFileUpload('thumbnail', 'thumbnail');
+                    if ($imagem_path) {
+                        error_log("Thumbnail salvo: $imagem_path");
+                    }
+                }
                 if (!$imagem_path && isset($data['imagem_url'])) {
                     $imagem_path = $data['imagem_url']; // Fallback para URL
                 }
                 
-                $modelo_3d_path = processFileUpload('model3d', 'model3d');
+                $modelo_3d_path = null;
+                if (isset($_FILES['model3d']) && $_FILES['model3d']['error'] === UPLOAD_ERR_OK) {
+                    error_log("Processando upload de modelo 3D (criação)");
+                    $modelo_3d_path = processFileUpload('model3d', 'model3d');
+                    if ($modelo_3d_path) {
+                        error_log("Modelo 3D salvo: $modelo_3d_path");
+                    } else {
+                        error_log("ERRO: Falha ao processar upload do modelo 3D (criação)");
+                    }
+                } else {
+                    if (isset($_FILES['model3d'])) {
+                        error_log("Modelo 3D não enviado corretamente (criação). Erro: " . $_FILES['model3d']['error']);
+                    } else {
+                        error_log("Modelo 3D não encontrado em _FILES (criação)");
+                    }
+                }
                 if (!$modelo_3d_path && isset($data['modelo_3d_url'])) {
                     $modelo_3d_path = $data['modelo_3d_url']; // Fallback para URL
                 }
