@@ -285,7 +285,7 @@ body {
     }
 
     .carousel-controls {
-        display: none;
+        display: flex;
     }
 
     .logo {
